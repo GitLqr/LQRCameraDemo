@@ -71,6 +71,13 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+        // 切换Camera
+        findViewById(R.id.btn_switch_camera).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mPreview.switchCamera();
+            }
+        });
         // 预览
         ivMediaPreview.setOnClickListener(new View.OnClickListener() {
             @Override

@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.preference.PreferenceManager;
 import android.provider.MediaStore;
 import android.util.Log;
@@ -58,8 +59,10 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     public static final int PROCESS_WITH_ASYNC_TASK = 3;
     public static final int PROCESS_WITH_THREAD_POOL = 4;
 
+    private Handler mHandler = new Handler(Looper.getMainLooper());
     private final SurfaceHolder mHolder;
     private Camera mCamera;
+    private int mCameraId = Camera.CameraInfo.CAMERA_FACING_BACK;
 
     // 拍照录像
     private Uri mOutputMediaFileUri;
@@ -117,38 +120,18 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        mCamera = getCameraInstance();
-        mCamera.setPreviewCallback(this);
-        try {
-            mCamera.setPreviewDisplay(holder);
-            mCamera.startPreview();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        initCamera();
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        if (mCamera != null) {
-            // 调整预览旋转方向
-            int rotation = getDisplayOrientation();
-            mCamera.setDisplayOrientation(rotation);
-            // 调整拍照图像旋转方向
-            Camera.Parameters parameters = mCamera.getParameters();
-            parameters.setRotation(rotation);
-            mCamera.setParameters(parameters);
-            // 调整横纵比
-            adjustDisplayRatio(rotation);
-        }
+        settingCamera();
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
         mHolder.removeCallback(this);
-        mCamera.setPreviewCallback(null);
-        mCamera.stopPreview();
-        mCamera.release();
-        mCamera = null;
+        destroyCamera();
     }
 
     @Override
@@ -197,6 +180,61 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
         }
     }
 
+    /**
+     * 初始化Camera
+     */
+    private void initCamera() {
+        mCamera = getCameraInstance();
+        mCamera.setPreviewCallback(this);
+        try {
+            mCamera.setPreviewDisplay(getHolder());
+            mCamera.startPreview();
+            // 配置Camera
+            settingCamera();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 配置Camera
+     */
+    private void settingCamera() {
+        if (mCamera != null) {
+            // 调整预览旋转方向
+            int rotation = getDisplayOrientation();
+            mCamera.setDisplayOrientation(rotation);
+            // 调整拍照图像旋转方向
+            Camera.Parameters parameters = mCamera.getParameters();
+            parameters.setRotation(rotation);
+            mCamera.setParameters(parameters);
+            // 调整横纵比
+            adjustDisplayRatio(rotation);
+        }
+    }
+
+    /**
+     * 销毁Camera
+     */
+    private void destroyCamera() {
+        if (mCamera != null) {
+            mCamera.setPreviewCallback(null);
+            mCamera.stopPreview();
+            mCamera.release();
+            mCamera = null;
+        }
+    }
+
+    /**
+     * 切换摄像头
+     */
+    public void switchCamera() {
+        destroyCamera();
+        mCameraId = mCameraId == Camera.CameraInfo.CAMERA_FACING_BACK ?
+                Camera.CameraInfo.CAMERA_FACING_FRONT : Camera.CameraInfo.CAMERA_FACING_BACK;
+        initCamera();
+    }
+
     private File getOutputMediaFile(int type) {
         File mediaStorageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), TAG);
         if (!mediaStorageDir.exists()) {
@@ -233,24 +271,29 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     public void takePicture(final ImageView ivImage) {
         mCamera.takePicture(null, null, new Camera.PictureCallback() {
             @Override
-            public void onPictureTaken(byte[] data, Camera camera) {
-                File pictureFile = getOutputMediaFile(MEDIA_TYPE_IMAGE);
-                if (pictureFile == null) {
-                    Log.d(TAG, "Error creating media file, check storage permissions");
-                    return;
-                }
-                try {
-                    FileOutputStream fos = new FileOutputStream(pictureFile);
-                    fos.write(data);
-                    fos.close();
-                    if (ivImage != null) ivImage.setImageURI(mOutputMediaFileUri);
-                    // 拍照之后，会停止预览，所以需要重新开启。
-                    camera.startPreview();
-                } catch (FileNotFoundException e) {
-                    Log.d(TAG, "File not found: " + e.getMessage());
-                } catch (IOException e) {
-                    Log.d(TAG, "Error accessing file: " + e.getMessage());
-                }
+            public void onPictureTaken(final byte[] data, final Camera camera) {
+                mHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        File pictureFile = getOutputMediaFile(MEDIA_TYPE_IMAGE);
+                        if (pictureFile == null) {
+                            Log.d(TAG, "Error creating media file, check storage permissions");
+                            return;
+                        }
+                        try {
+                            FileOutputStream fos = new FileOutputStream(pictureFile);
+                            fos.write(data);
+                            fos.close();
+                            if (ivImage != null) ivImage.setImageURI(mOutputMediaFileUri);
+                            // 拍照之后，会停止预览，所以需要重新开启。
+                            camera.startPreview();
+                        } catch (FileNotFoundException e) {
+                            Log.d(TAG, "File not found: " + e.getMessage());
+                        } catch (IOException e) {
+                            Log.d(TAG, "Error accessing file: " + e.getMessage());
+                        }
+                    }
+                });
             }
         });
     }
@@ -274,10 +317,15 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
     public void stopRecording(final ImageView ivImage) {
         if (mMediaRecorder != null) {
             mMediaRecorder.stop();
-            if (ivImage != null) {
-                Bitmap thumbnail = ThumbnailUtils.createVideoThumbnail(mOutputMediaFileUri.getPath(), MediaStore.Video.Thumbnails.MINI_KIND);
-                ivImage.setImageBitmap(thumbnail);
-            }
+            mHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    if (ivImage != null) {
+                        Bitmap thumbnail = ThumbnailUtils.createVideoThumbnail(mOutputMediaFileUri.getPath(), MediaStore.Video.Thumbnails.MINI_KIND);
+                        ivImage.setImageBitmap(thumbnail);
+                    }
+                }
+            });
         }
         releaseMediaRecorder();
     }
@@ -535,7 +583,7 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 
     private void openCameraOriginal() {
         try {
-            mCamera = Camera.open();
+            mCamera = Camera.open(mCameraId);
         } catch (Exception e) {
             Log.d(TAG, "camera is not available");
         }

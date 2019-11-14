@@ -19,14 +19,6 @@
         android:layout_height="wrap_content"
         android:background="@android:color/darker_gray">
 
-        <Button
-            android:id="@+id/btn_settings"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentRight="true"
-            android:layout_centerVertical="true"
-            android:text="设置" />
-
         <ImageView
             android:id="@+id/iv_media_preview"
             android:layout_width="60dp"
@@ -40,6 +32,7 @@
             android:layout_height="wrap_content"
             android:layout_centerHorizontal="true"
             android:layout_centerVertical="true"
+            android:layout_toRightOf="@id/iv_media_preview"
             android:orientation="horizontal">
 
             <Button
@@ -53,6 +46,18 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="录像" />
+
+            <Button
+                android:id="@+id/btn_switch_camera"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="切换" />
+
+            <Button
+                android:id="@+id/btn_settings"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="设置" />
         </LinearLayout>
     </RelativeLayout>
 </LinearLayout>
